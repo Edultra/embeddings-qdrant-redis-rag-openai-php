@@ -1,0 +1,38 @@
+# Configuracoes locais e credenciais
+.env
+.env.*
+!.env.example
+
+# Dependencias instaladas pelo Composer
+/vendor/
+
+# Arquivos gerados pela aplicacao
+/respostas/*
+!/respostas/.gitkeep
+/cache/*
+!/cache/.gitkeep
+
+# Dados locais do Qdrant
+/qdrant/storage/
+
+# Arquivos temporarios e logs
+*.log
+*.tmp
+*.temp
+*.cache
+.DS_Store
+Thumbs.db
+
+# Configuracoes locais de editores e ferramentas
+.vscode/
+.idea/
+*.code-workspace
+
+# Cobertura e artefatos de testes
+.phpunit.result.cache
+.phpunit.cache/
+coverage/
+
+# Arquivos temporarios de upload
+/import/*
+!/import/.gitkeep
