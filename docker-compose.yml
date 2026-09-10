@@ -1,6 +1,22 @@
 version: '3.8'
 
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag_app_php
+    ports:
+      - "8080:80" # Acesse a aplicação em http://localhost:8080
+    volumes:
+      - .:/var/www/html
+    env_file:
+      - .env
+    depends_on:
+      - qdrant_db
+      - redis_db
+    restart: always
+
   qdrant_db:
     image: qdrant/qdrant:v1.12.5
     container_name: qdrant_poc_php
@@ -13,5 +29,16 @@ services:
       - RUN_MODE=production
     restart: always
 
+  redis_db:
+    image: redis:7-alpine
+    container_name: redis_poc_php
+    ports:
+      - "6379:6379" # Porta usada pelo Predis (REDIS_HOST/REDIS_PORT no .env)
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    restart: always
+
 volumes:
   qdrant_data:
+  redis_data:

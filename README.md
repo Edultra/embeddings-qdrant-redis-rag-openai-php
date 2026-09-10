@@ -16,14 +16,13 @@ Aplicação PHP para conversar com documentos PDF indexados no Qdrant e gerar re
 
 ## Requisitos
 
-- PHP 7.4 ou superior.
-- Extensões PHP `curl` e `json`.
-- Composer.
-- Qdrant em execução e acessível via REST.
-- Redis em execução, somente se o cache Redis for utilizado.
+- Docker e Docker Compose (recomendado): sobem PHP, Qdrant e Redis prontos para uso.
+- Alternativamente, para rodar o PHP fora do Docker: PHP 7.4 ou superior, extensões `curl` e `json`, e Composer.
+- Qdrant em execução e acessível via REST (via Docker Compose ou instância própria).
+- Redis em execução, somente se o cache Redis for utilizado (opcional, tem fallback em arquivo).
 - Uma chave de API da OpenAI.
 - Um modelo disponível na OpenAI, como o definido em `OPENAI_MODEL`.
-- Um bundle de certificados CA quando o PHP no Windows não possuir uma CA configurada.
+- Um bundle de certificados CA quando o PHP no Windows (fora do Docker) não possuir uma CA configurada.
 
 ## Estrutura
 
@@ -43,6 +42,8 @@ Aplicação PHP para conversar com documentos PDF indexados no Qdrant e gerar re
 │   └── OpenAI.php             # Integração normal e streaming com OpenAI
 ├── composer.json
 ├── composer.lock
+├── Dockerfile                 # Imagem PHP + Apache usada pelo serviço "app"
+├── docker-compose.yml         # Serviços app (PHP), qdrant_db e redis_db
 ├── video.mp4                 # Demonstração da aplicação
 ├── video.gif                 # Demonstração animada
 ├── .env.example
@@ -65,26 +66,29 @@ OPENAI_API_KEY=your-openai-api-key
 OPENAI_MODEL=gpt-4o-mini
 OPENAI_MAX_OUTPUT_TOKENS=350
 OPENAI_MAX_RETRIES=1
-# Opcional no Windows: caminho para cacert.pem
-OPENAI_CA_BUNDLE=C:\wamp64\apps\phpmyadmin5.2.3\vendor\composer\ca-bundle\res\cacert.pem
-QDRANT_URL=http://127.0.0.1:6333
+# Deixe vazio ao rodar via docker compose (a imagem já traz ca-certificates).
+# Opcional fora do Docker, no Windows: caminho para cacert.pem
+OPENAI_CA_BUNDLE=
+# Use o nome do serviço do docker-compose (qdrant_db/redis_db) quando o PHP rodar em container,
+# ou 127.0.0.1 quando o PHP rodar diretamente no host.
+QDRANT_URL=http://qdrant_db:6333
 QDRANT_API_KEY=
+# IMPORTANTE: use o mesmo nome de coleção já indexado; um nome diferente
+# faz a aplicação não encontrar os vetores existentes.
 QDRANT_COLLECTION=rag_documents
-# Opcional: deixe REDIS_HOST vazio para usar cache em arquivos em cache/.
-REDIS_HOST=
+REDIS_HOST=redis_db
 REDIS_PORT=6379
 REDIS_PASSWORD=
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-MAX_CHUNK_SIZE=500
 CHUNK_SIZE=1000
 CHUNK_OVERLAP=200
+# Deixe vazio; só defina com um valor MENOR que CHUNK_SIZE se quiser um teto extra.
+MAX_CHUNK_SIZE=
 SIMILARITY_TOP_K=3
 MIN_SIMILARITY_SCORE=0.15
 ```
 
-`MAX_CHUNK_SIZE` define o tamanho máximo de cada chunk de documento, em caracteres. O valor padrão é `500`.
-
-`CHUNK_SIZE` e `CHUNK_OVERLAP` controlam o tamanho alvo de cada chunk e a sobreposição entre chunks consecutivos, em caracteres (padrão `1000`/`200`). `MAX_CHUNK_SIZE` só reduz esse limite quando definido com um valor menor que `CHUNK_SIZE`.
+`CHUNK_SIZE` e `CHUNK_OVERLAP` controlam o tamanho alvo de cada chunk e a sobreposição entre chunks consecutivos, em caracteres (padrão `1000`/`200`). `MAX_CHUNK_SIZE` só reduz esse limite quando definido com um valor menor que `CHUNK_SIZE`; deixe-o vazio para usar `CHUNK_SIZE` integralmente. Note que `MAX_CHUNK_SIZE` só tem efeito quando o PHP roda via `docker compose` (o valor chega por variável de ambiente real do container); fora do Docker, apenas `CHUNK_SIZE`/`CHUNK_OVERLAP` (lidos do arquivo `.env`) são aplicados.
 
 `SIMILARITY_TOP_K` define quantos trechos mais relevantes são buscados no Qdrant (padrão `3`). `MIN_SIMILARITY_SCORE` descarta trechos cujo score de similaridade fique abaixo do valor informado (padrão `0.15`). Scores de cosine com embeddings da OpenAI costumam ficar entre `0.2` e `0.4` para trechos relevantes nesta base; valores como `0.5` descartam resultados válidos.
 
@@ -114,9 +118,9 @@ As respostas são armazenadas por uma chave derivada da pergunta e do documento 
 
 O embedding de cada pergunta também é cacheado (TTL de 24 horas), evitando chamar a OpenAI novamente para perguntas repetidas mesmo quando a resposta final não estiver em cache.
 
-Por padrão, deixe `REDIS_HOST` vazio. O projeto gravará arquivos serializados em `cache/`, diretório criado automaticamente e ignorado pelo Git.
+Rodando via `docker compose up -d`, o Redis já sobe automaticamente (serviço `redis_db`) e é usado por padrão. Sem Docker e sem `REDIS_HOST` configurado, o projeto grava arquivos serializados em `cache/`, diretório criado automaticamente e ignorado pelo Git.
 
-Para compartilhar o cache entre processos ou servidores, configure um Redis e preencha as variáveis abaixo no `.env`:
+Para usar um Redis próprio (fora do Docker Compose deste projeto), preencha as variáveis abaixo no `.env`:
 
 ```dotenv
 REDIS_HOST=127.0.0.1
@@ -125,11 +129,7 @@ REDIS_PORT=6379
 REDIS_PASSWORD=
 ```
 
-O cliente Redis é fornecido por `predis/predis`. Para iniciar um Redis local com Docker:
-
-```powershell
-docker run --name rag-redis -d -p 6379:6379 redis:7-alpine
-```
+O cliente Redis é fornecido por `predis/predis`.
 
 Não configure `REDIS_HOST` se o Redis não estiver acessível; caso contrário, o cliente tentará usá-lo em vez do fallback por arquivos.
 
@@ -149,9 +149,24 @@ Nunca coloque a chave da API no `README.md`, no código-fonte ou em um commit. S
 
 ## Executar o chat
 
-Na raiz do projeto, inicie o servidor PHP:
+### Com Docker Compose (recomendado)
 
 ```powershell
+docker compose up -d --build
+```
+
+Isso sobe três serviços: `app` (PHP + Apache), `qdrant_db` e `redis_db`. Abra no navegador:
+
+```text
+http://localhost:8080/index.php
+```
+
+### Sem Docker (PHP local)
+
+Instale as dependências e inicie o servidor embutido do PHP:
+
+```powershell
+composer install
 php -S 127.0.0.1:8091 -t .
 ```
 
@@ -161,15 +176,17 @@ Abra no navegador:
 http://127.0.0.1:8091/index.php
 ```
 
+Nesse caso, ajuste `QDRANT_URL` para `http://127.0.0.1:6333` e `REDIS_HOST` para `127.0.0.1` (ou vazio, para usar o fallback em arquivo) no `.env`, já que os nomes `qdrant_db`/`redis_db` só são resolvíveis dentro da rede do Docker Compose.
+
 Selecione um PDF em `documents/` e clique em **Indexar documento**. Depois, mantenha esse documento selecionado para fazer perguntas. A API usada pelo navegador é `buscar.php`.
 
 ## Qdrant no navegador
 
-Com o serviço iniciado por `docker compose up -d`, use os endereços abaixo:
+Com o serviço iniciado por `docker compose up -d`, use os endereços abaixo (substitua `rag_documents` pelo valor configurado em `QDRANT_COLLECTION`):
 
 - Dashboard: http://127.0.0.1:6333/dashboard
 - API e lista de coleções: http://127.0.0.1:6333/collections
-- Coleção padrão: http://127.0.0.1:6333/dashboard#/collections/rag_documents
+- Coleção configurada: http://127.0.0.1:6333/dashboard#/collections/rag_documents
 
 ## Fluxo de indexação
 
