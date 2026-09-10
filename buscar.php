@@ -56,6 +56,7 @@ if ($action === 'index_document') {
         ob_end_clean();
         echo json_encode(['success' => true, 'message' => $source . ' foi indexado com sucesso (' . count($documents) . ' partes).'], JSON_UNESCAPED_UNICODE);
     } catch (Throwable $error) {
+        error_log('[buscar.php:index_document] ' . get_class($error) . ': ' . $error->getMessage());
         ob_end_clean();
         http_response_code(500);
         echo json_encode(['error' => 'Não foi possível indexar o documento. Verifique o Qdrant e o arquivo selecionado.'], JSON_UNESCAPED_UNICODE);
@@ -197,6 +198,7 @@ try {
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 } catch (Throwable $error) {
+    error_log('[buscar.php] ' . get_class($error) . ': ' . $error->getMessage());
     if ($streamStarted) {
         echo 'data: ' . json_encode(['type' => 'error', 'error' => 'Não foi possível obter uma resposta agora.'], JSON_UNESCAPED_UNICODE) . "\n" . str_repeat(' ', 4096) . "\n\n";
         flush();
