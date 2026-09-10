@@ -74,15 +74,14 @@ class DocumentProcessor
         $start = 0;
 
         // Limitar o tamanho máximo do chunk para evitar problemas de memória
-        $maxChunkSize = min($chunkSize, (int) (getenv('MAX_CHUNK_SIZE') ?: 500));
+        // MAX_CHUNK_SIZE só reduz o limite se for menor que chunkSize (o default não deve contradizer o Config)
+        $maxChunkSize = min($chunkSize, (int) (getenv('MAX_CHUNK_SIZE') ?: $chunkSize));
 
-        /*
         if ($maxChunkSize <= $chunkOverlap) {
             throw new InvalidArgumentException(
                 'chunkOverlap deve ser menor que o tamanho máximo do chunk.'
             );
         }
-        */
 
         while ($start < $length) {
             $end = min($start + $maxChunkSize, $length);

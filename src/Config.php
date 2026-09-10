@@ -48,9 +48,10 @@ class Config {
         ];
         
         // Configurações do text splitter
+        // MAX_CHUNK_SIZE, se definido, atua apenas como um teto de segurança abaixo de chunkSize
         self::$textSplitter = [
-            'chunkSize' => 1000,
-            'chunkOverlap' => 200,
+            'chunkSize' => max(1, (int) ($_ENV['CHUNK_SIZE'] ?? 1000)),
+            'chunkOverlap' => max(0, (int) ($_ENV['CHUNK_OVERLAP'] ?? 200)),
         ];
         
         // Configurações de embeddings
@@ -61,7 +62,9 @@ class Config {
         
         // Configurações de similaridade
         self::$similarity = [
-            'topK' => 3,
+            'topK' => max(1, (int) ($_ENV['SIMILARITY_TOP_K'] ?? 3)),
+            // Scores de cosine com embeddings da OpenAI costumam ficar na faixa 0.2-0.4 para trechos relevantes
+            'minScore' => (float) ($_ENV['MIN_SIMILARITY_SCORE'] ?? 0.15),
         ];
     }
 

@@ -23,7 +23,7 @@ class QdrantVectorStore
     public function similaritySearchWithScore($question, $topK, $source = null)
     {
         echo "🔍 Buscando contexto para: $question\n";
-        $embedding = $this->embeddings->embedQuery($question);
+        $embedding = $this->getCachedQueryEmbedding($question);
         $filter = null;
         if ($source !== null && $source !== '') {
             $filter = [
@@ -158,6 +158,20 @@ class QdrantVectorStore
     private function pointId($source, $chunk)
     {
         return hexdec(substr(sha1($source . '#' . $chunk), 0, 15));
+    }
+
+    // Evita chamadas repetidas à OpenAI para a mesma pergunta (cache de 24h)
+    private function getCachedQueryEmbedding($question)
+    {
+        $cacheKey = 'embedding:' . hash('xxh128', $question);
+        $cached = getCache($cacheKey, 86400, 'embeddings');
+        if (is_array($cached) && $cached !== []) {
+            return $cached;
+        }
+
+        $embedding = $this->embeddings->embedQuery($question);
+        saveCache($cacheKey, $embedding, 'embeddings', 86400);
+        return $embedding;
     }
 
     private function request($method, $path, $body = null)

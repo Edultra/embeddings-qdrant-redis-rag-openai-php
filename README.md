@@ -76,9 +76,17 @@ REDIS_PORT=6379
 REDIS_PASSWORD=
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 MAX_CHUNK_SIZE=500
+CHUNK_SIZE=1000
+CHUNK_OVERLAP=200
+SIMILARITY_TOP_K=3
+MIN_SIMILARITY_SCORE=0.15
 ```
 
 `MAX_CHUNK_SIZE` define o tamanho máximo de cada chunk de documento, em caracteres. O valor padrão é `500`.
+
+`CHUNK_SIZE` e `CHUNK_OVERLAP` controlam o tamanho alvo de cada chunk e a sobreposição entre chunks consecutivos, em caracteres (padrão `1000`/`200`). `MAX_CHUNK_SIZE` só reduz esse limite quando definido com um valor menor que `CHUNK_SIZE`.
+
+`SIMILARITY_TOP_K` define quantos trechos mais relevantes são buscados no Qdrant (padrão `3`). `MIN_SIMILARITY_SCORE` descarta trechos cujo score de similaridade fique abaixo do valor informado (padrão `0.15`). Scores de cosine com embeddings da OpenAI costumam ficar entre `0.2` e `0.4` para trechos relevantes nesta base; valores como `0.5` descartam resultados válidos.
 
 `OPENAI_MAX_OUTPUT_TOKENS` limita tecnicamente os tokens produzidos em cada resposta. `OPENAI_MAX_RETRIES` limita novas tentativas após falha; ambos reduzem o risco de custo inesperado.
 
@@ -103,6 +111,8 @@ composer install
 ### Cache local
 
 As respostas são armazenadas por uma chave derivada da pergunta e do documento selecionado, com TTL de uma hora. Uma resposta encontrada no cache não consulta o Qdrant nem chama a OpenAI. O mesmo comportamento vale para requisições com streaming SSE.
+
+O embedding de cada pergunta também é cacheado (TTL de 24 horas), evitando chamar a OpenAI novamente para perguntas repetidas mesmo quando a resposta final não estiver em cache.
 
 Por padrão, deixe `REDIS_HOST` vazio. O projeto gravará arquivos serializados em `cache/`, diretório criado automaticamente e ignorado pelo Git.
 

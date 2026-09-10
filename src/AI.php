@@ -1,23 +1,28 @@
 <?php
 
-class AI {
+class AI
+{
     private $vectorStore;
     private $nlpModel;
     private $debugLog;
     private $promptConfig;
     private $templateText;
     private $topK;
+    private $minScore;
 
-    public function __construct($params) {
+    public function __construct($params)
+    {
         $this->vectorStore = $params['vectorStore'];
         $this->nlpModel = $params['nlpModel'];
         $this->debugLog = $params['debugLog'];
         $this->promptConfig = $params['promptConfig'];
         $this->templateText = $params['templateText'];
         $this->topK = $params['topK'];
+        $this->minScore = (float) ($params['minScore'] ?? 0.0);
     }
 
-    public function retrieveVectorSearchResults($input) {
+    public function retrieveVectorSearchResults($input)
+    {
         if (empty($input['question'])) {
             return [
                 'question' => $input['question'],
@@ -40,13 +45,17 @@ class AI {
 
         $topScore = 0;
         $sources = [];
-        
+
         // Converte os documentos relevantes em um único texto para o prompt
         $contexts = '';
         foreach ($vectorResults as $result) {
+            $score = (float) ($result[1] ?? 0);
+            if ($score < $this->minScore) {
+                continue;
+            }
+
             $document = $result[0] ?? [];
             $content = is_array($document) ? ($document['pageContent'] ?? '') : (string) $document;
-            $score = (float) ($result[1] ?? 0);
 
             $source = $document['metadata']['source'] ?? '';
             if ($source !== '' && !in_array($source, $sources, true)) {
@@ -66,7 +75,7 @@ class AI {
                 'error' => "Desculpe, não encontrei informações relevantes sobre essa pergunta na base de conhecimento."
             ];
         }
-        
+
         return [
             'question' => $input['question'],
             'context' => $contexts,
@@ -75,12 +84,13 @@ class AI {
         ];
     }
 
-    public function generateNLPResponse($input) {
+    public function generateNLPResponse($input)
+    {
         // Evita chamar o modelo quando a etapa anterior encontrou um erro
         if (isset($input['error']) && $input['error']) {
             return $input;
         }
-        
+
         $prompt = $this->buildPrompt($input);
         if (trim((string) ($input['context'] ?? '')) === '') {
             return [
@@ -94,7 +104,7 @@ class AI {
             ? $this->nlpModel->invokeStreaming($prompt, $onChunk)
             : $this->nlpModel->invoke($prompt);
         $response = is_array($modelResult) ? ($modelResult['response'] ?? '') : (string) $modelResult;
-        
+
         return [
             'question' => $input['question'],
             'answer' => $response,
@@ -107,8 +117,12 @@ class AI {
         ];
     }
 
-    private function buildPrompt($input) {
+    private function buildPrompt($input)
+    {
         $instructions = $this->promptConfig['instructions'] ?? [];
+        if ($_ENV['OPENAI_MAX_OUTPUT_TOKENS']) {
+            $instructions[] = 'Resuma a informação relevante do contexto fornecido para no máximo de ' . $_ENV['OPENAI_MAX_OUTPUT_TOKENS'];
+        }
         if (is_array($instructions)) {
             $instructions = implode("\n", array_map(function ($instruction) {
                 return '- ' . $instruction;
@@ -129,16 +143,17 @@ class AI {
         return strtr($this->templateText, $replacements);
     }
 
-    public function answerQuestion($question, $source = null, $onChunk = null) {
+    public function answerQuestion($question, $source = null, $onChunk = null)
+    {
         // Simular o pipeline completo
         $chainState = ['question' => $question, 'source' => $source, 'onChunk' => $onChunk];
-        
+
         // Busca os resultados vetoriais
         $retrievalResult = $this->retrieveVectorSearchResults($chainState);
-        
+
         // Gera a resposta NLP
         $responseResult = $this->generateNLPResponse($retrievalResult);
-        
+
         return $responseResult;
     }
 }

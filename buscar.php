@@ -112,6 +112,7 @@ try {
             'promptConfig' => Config::$promptConfig,
             'templateText' => Config::$templateText,
             'topK' => Config::$similarity['topK'],
+            'minScore' => Config::$similarity['minScore'],
         ]);
 
         if ($streaming) {
